@@ -1,5 +1,5 @@
 {
-  "updated_at": 1792746112.5699499,
+  "updated_at": 1792746329.0282407,
   "dry_run": true,
   "pending": {},
   "active": {
@@ -16,7 +16,7 @@
       "opened_at": 1792746110.7739453,
       "max_hold_until": 1792832510.7739453,
       "score": 74.6,
-      "last_check_ms": 1792746060000,
+      "last_check_ms": 1792746300000,
       "fill_candle_ms": 1792746000000
     }
   },
@@ -29,5 +29,8 @@
     "realized_usdt": 0.0,
     "trades": 0,
     "wins": 0
+  },
+  "consumed_plans": {
+    "IRYS/USDT:USDT|1792728000": 1792771200
   }
 }
