@@ -3,3 +3,4 @@ ts_iso,bot,event,symbol,side,price,amount,entry,sl,tp,est_gross_pnl_pct,est_fees
 2026-10-23T09:01:50+00:00,KRONOS_SNIPER,paper_entry_filled,IRYS/USDT:USDT,short,0.034177,23.0,0.034177,0.036716,0.023443,,,,score=74.6
 2026-10-23T09:47:45+00:00,KRONOS_SNIPER,entry_placed,ETH/USDT:USDT,short,2419.32,3.0,2419.32,2459.34,2358.72,,,,score=73.2 P(up)=0.1 rr=1.51 lev=4 setups=squeeze+mean_reversion market=2396.37
 2026-10-23T12:05:04+00:00,KRONOS_SNIPER,entry_placed,IRYS/USDT:USDT,short,0.041287,19.0,0.041287,0.046298,0.024243,,,,score=85.0 P(up)=0.0 rr=3.40 lev=4 setups=mean_reversion market=0.040427
+2026-10-23T12:07:18+00:00,KRONOS_SNIPER,entry_filled,IRYS/USDT:USDT,short,0.041287,19.0,0.041287,0.046298,0.024243,,,,score=85.0
