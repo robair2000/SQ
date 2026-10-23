@@ -1,11 +1,34 @@
 {
-  "updated_at": 1792746374.2341154,
+  "updated_at": 1792748867.4035423,
   "dry_run": false,
-  "pending": {},
+  "pending": {
+    "ETH/USDT:USDT": {
+      "side": "short",
+      "entry": 2419.32,
+      "sl": 2459.34,
+      "tp": 2358.72,
+      "atr": 33.469285714285725,
+      "amount": 3.0,
+      "leverage": 4,
+      "order_id": "503046633622245376",
+      "cid": "krn_entry_1792748865469",
+      "valid_until": 1792771200,
+      "placed_at": 1792748863.7633805,
+      "candle_ts": 1792728000,
+      "score": 73.2,
+      "prob_up": 0.1,
+      "setups": [
+        "squeeze",
+        "mean_reversion"
+      ],
+      "last_check_ms": 1792748863763
+    }
+  },
   "active": {},
   "cooldowns": {},
   "last_traded_candles": {
-    "IRYS/USDT:USDT": 1792728000
+    "IRYS/USDT:USDT": 1792728000,
+    "ETH/USDT:USDT": 1792728000
   },
   "daily_guard": {
     "date": "2026-10-23",
@@ -18,6 +41,7 @@
     "wins": 0
   },
   "consumed_plans": {
-    "IRYS/USDT:USDT|1792728000": 1792771200
+    "IRYS/USDT:USDT|1792728000": 1792771200,
+    "ETH/USDT:USDT|1792728000": 1792771200
   }
 }
