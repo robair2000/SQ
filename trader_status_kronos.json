@@ -1,5 +1,5 @@
 {
-  "updated_at": 1792757241.9408727,
+  "updated_at": 1792768552.2567346,
   "dry_run": false,
   "pending": {
     "ETH/USDT:USDT": {
@@ -24,24 +24,10 @@
       "last_check_ms": 1792748863763
     }
   },
-  "active": {
-    "IRYS/USDT:USDT": {
-      "side": "short",
-      "entry": 0.041287,
-      "sl": 0.046298,
-      "initial_sl": 0.046298,
-      "tp": 0.024243,
-      "risk": 0.0050110000000000016,
-      "contracts": 19.0,
-      "protected_contracts": 19.0,
-      "breakeven": false,
-      "opened_at": 1792757238.248107,
-      "max_hold_until": 1792843638.2481072,
-      "score": 85.0,
-      "last_check_ms": 1792757238248
-    }
+  "active": {},
+  "cooldowns": {
+    "IRYS/USDT:USDT": 1792768551.9575415
   },
-  "cooldowns": {},
   "last_traded_candles": {
     "IRYS/USDT:USDT": 1792742400,
     "ETH/USDT:USDT": 1792728000
