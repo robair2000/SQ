@@ -1,0 +1,10 @@
+# torch is installed separately as the CPU-only build (see render.yaml buildCommand):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+ccxt>=4.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+# Kronos
+einops==0.8.1
+huggingface_hub>=0.33.1,<1.0
+safetensors>=0.4.0
+tqdm>=4.66.0

@@ -1,0 +1,159 @@
+"""Order helpers for KuCoin Futures via ccxt.
+
+Belangrijk:
+- Untriggered stop-orders staan bij KuCoin Futures in een aparte lijst. Daarom wordt
+  `fetch_open_orders` altijd ook met params={'stop': True} aangeroepen.
+- SL is een 'market' order met `stopLossPrice` (ccxt zet de trigger-richting zelf).
+  Type 'stop' bestaat niet in de KuCoin-API.
+"""
+import os
+import time
+import math
+
+MARGIN_MODE = os.environ.get('MARGIN_MODE', 'cross')
+
+
+def _cid(order):
+    cid = order.get('clientOrderId')
+    if not cid:
+        cid = (order.get('info') or {}).get('clientOid')
+    return str(cid or '')
+
+
+def fetch_all_open_orders(exchange, symbol=None):
+    """Gewone open orders (fout = exception, zodat de caller niet 'geen orders' aanneemt)
+    plus untriggered stop-orders (fout wordt gelogd en genegeerd). Stops krijgen `_stop=True`."""
+    orders = list(exchange.fetch_open_orders(symbol))
+    try:
+        for o in exchange.fetch_open_orders(symbol, params={'stop': True}):
+            o['_stop'] = True
+            orders.append(o)
+    except Exception as e:
+        print(f"⚠️ Kon untriggered stop-orders niet ophalen ({symbol or 'alle'}): {e}")
+    seen, unique = set(), []
+    for o in orders:
+        key = (o.get('id'), bool(o.get('_stop')))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(o)
+    return unique
+
+
+def cancel_orders(exchange, orders, prefix, keep_id=None):
+    """Annuleert alle orders waarvan clientOrderId met `prefix` begint. Return aantal geannuleerd."""
+    n = 0
+    for o in orders:
+        if not _cid(o).startswith(prefix):
+            continue
+        if keep_id is not None and o.get('id') == keep_id:
+            continue
+        try:
+            params = {'stop': True} if o.get('_stop') else {}
+            exchange.cancel_order(o['id'], o.get('symbol'), params)
+            n += 1
+        except Exception as e:
+            print(f"⚠️ Annuleren van order {o.get('id')} ({_cid(o)}) mislukt: {e}")
+    return n
+
+
+def create_stop_loss(exchange, symbol, close_side, contracts, stop_price, prefix):
+    cid = f"{prefix}sl_{int(time.time() * 1000)}"
+    order = exchange.create_order(symbol, 'market', close_side, contracts, None, {
+        'stopLossPrice': stop_price,
+        'reduceOnly': True,
+        'clientOrderId': cid,
+        'marginMode': MARGIN_MODE,
+    })
+    return order.get('id') if order else None
+
+
+def create_take_profit(exchange, symbol, close_side, contracts, tp_price, prefix):
+    cid = f"{prefix}tp_{int(time.time() * 1000)}"
+    order = exchange.create_order(symbol, 'limit', close_side, contracts, tp_price, {
+        'reduceOnly': True,
+        'clientOrderId': cid,
+        'marginMode': MARGIN_MODE,
+    })
+    return order.get('id') if order else None
+
+
+def replace_stop_loss(exchange, symbol, side, contracts, new_sl, prefix):
+    """Nieuwe SL eerst plaatsen, dán pas de oude(n) annuleren (nooit een moment zonder stop).
+    Return nieuwe order-id of None bij falen (oude SL blijft dan staan)."""
+    close_side = 'sell' if side == 'long' else 'buy'
+    try:
+        new_id = create_stop_loss(exchange, symbol, close_side, contracts, new_sl, prefix)
+    except Exception as e:
+        print(f"⚠️ {prefix}: nieuwe stop-loss plaatsen voor {symbol} mislukt: {e}")
+        return None
+    try:
+        cancel_orders(exchange, fetch_all_open_orders(exchange, symbol), f"{prefix}sl_", keep_id=new_id)
+    except Exception as e:
+        print(f"⚠️ {prefix}: oude stop-losses opruimen voor {symbol} mislukt: {e}")
+    return new_id
+
+
+def replace_protective_orders(exchange, symbol, side, contracts, sl, tp, prefix):
+    """(Her)plaatst SL en TP op de volledige actuele positiegrootte `contracts`.
+    Return True als de SL staat (zonder SL is de positie naakt). TP-falen wordt gelogd; de bot
+    sluit software-matig op TP."""
+    close_side = 'sell' if side == 'long' else 'buy'
+    sl_id = replace_stop_loss(exchange, symbol, side, contracts, sl, prefix)
+    if sl_id is None:
+        return False
+    if tp is not None:
+        try:
+            # Oude TP eerst weg: reduce-only limit orders kunnen elkaar blokkeren
+            cancel_orders(exchange, fetch_all_open_orders(exchange, symbol), f"{prefix}tp_")
+            create_take_profit(exchange, symbol, close_side, contracts, tp, prefix)
+        except Exception as e:
+            print(f"⚠️ {prefix}: take-profit plaatsen voor {symbol} mislukt (software-TP blijft actief): {e}")
+    return True
+
+
+def find_protective_levels(open_orders, symbol, prefix="v20_"):
+    sl_price = None
+    tp_price = None
+    for o in open_orders:
+        if o.get('symbol') != symbol:
+            continue
+        cid = _cid(o)
+        if prefix + 'sl_' in cid:
+            trig = o.get('stopPrice') or (o.get('info') or {}).get('stopPrice') or (o.get('info') or {}).get('triggerPrice')
+            if trig:
+                sl_price = float(trig)
+        elif prefix + 'tp_' in cid:
+            price = o.get('price')
+            if price:
+                tp_price = float(price)
+    return sl_price, tp_price
+
+
+def describe_sizing(exchange, symbols, trade_amount_usdt, leverage):
+    results = []
+    for symbol in symbols:
+        try:
+            market = exchange.market(symbol)
+            contract_size = float(market.get('contractSize') or 1.0)
+            min_amount = float(market.get('limits', {}).get('amount', {}).get('min') or 1.0)
+            ticker = exchange.fetch_ticker(symbol)
+            price = float(ticker['last'])
+            per_contract = price * contract_size
+            target = trade_amount_usdt * leverage
+            lots = math.floor(target / per_contract)
+            ok = lots >= max(1, min_amount)
+            results.append((symbol, per_contract, ok))
+        except Exception:
+            results.append((symbol, None, None))
+    return results
+
+
+def create_limit_entry(exchange, symbol, side, contracts, price, prefix, post_only=True):
+    """Resting limit entry ('snipe'). post_only guarantees maker fee and that it never fills as a market order."""
+    cid = f"{prefix}entry_{int(time.time() * 1000)}"
+    params = {'clientOrderId': cid, 'marginMode': MARGIN_MODE}
+    if post_only:
+        params['postOnly'] = True
+    order = exchange.create_order(symbol, 'limit', side, contracts, price, params)
+    return (order or {}).get('id'), cid

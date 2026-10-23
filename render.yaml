@@ -1,0 +1,60 @@
+services:
+  - type: worker
+    name: kronos-sniper
+    runtime: python
+    plan: starter             # 512 MB: Kronos-mini runs in a short-lived child process per scan
+    region: frankfurt
+    # CPU-only torch (~200 MB instead of ~2 GB CUDA), then deps, then bake the Kronos weights into the build
+    buildCommand: >-
+      pip install --upgrade pip &&
+      pip install torch --index-url https://download.pytorch.org/whl/cpu &&
+      pip install -r requirements.txt &&
+      python kronos_engine.py
+    startCommand: python worker.py
+    autoDeploy: false         # the bot commits its own status/log files; those commits must not redeploy it
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: HF_HOME          # weights downloaded at build time live inside the deployed project dir
+        value: /opt/render/project/src/.hf_cache
+      - key: TOKENIZERS_PARALLELISM
+        value: "false"
+      # --- memory: keep native thread pools and malloc arenas small ---
+      - key: MALLOC_ARENA_MAX
+        value: "2"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      # --- secrets: fill in on the Render dashboard ---
+      - key: KUCOIN_API_KEY
+        sync: false
+      - key: KUCOIN_API_SECRET
+        sync: false
+      - key: KUCOIN_API_PASSWORD
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO      # <you>/<this repo>; empty = no GitHub sync
+        sync: false
+      # --- settings ---
+      - key: GITHUB_BRANCH
+        value: main
+      - key: DRY_RUN
+        value: "true"         # paper trading until evaluate_forecasts.py shows an edge
+      - key: TRADE_AMOUNT_USDT
+        value: "20.0"
+      - key: MAX_CONCURRENT_POSITIONS
+        value: "4"
+      - key: KRONOS_MODEL
+        value: NeoQuasar/Kronos-mini
+      - key: KRONOS_TOKENIZER
+        value: NeoQuasar/Kronos-Tokenizer-2k
+      - key: KRONOS_SAMPLES
+        value: "30"
+      - key: KRONOS_BATCH
+        value: "10"
+      - key: KRONOS_MIN_PROB
+        value: "0.60"
