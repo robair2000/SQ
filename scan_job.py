@@ -59,7 +59,7 @@ def decide(write=True):
         d = pickle.load(f)
     contexts = d['contexts']
     if C.USE_KRONOS:
-        paths, model = kronos_engine.read_paths(KRONOS_OUT, d['kronos_symbols']), 'kronos'
+        paths, model = kronos_engine.read_paths(KRONOS_OUT, d['kronos_symbols'], KRONOS_IN), 'kronos'
         if d['kronos_symbols'] and not paths:
             print("⚠️ [SCAN] no Kronos output this scan (see the [KRONOS] lines above) -> no new plans")
     else:

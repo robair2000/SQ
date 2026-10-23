@@ -19,7 +19,7 @@ import config as C
 from github_utils import github_pull, github_put
 from market_data import fetch_1m_since
 from order_utils import (fetch_all_open_orders, cancel_orders, create_limit_entry,
-                         replace_protective_orders, replace_stop_loss)
+                         replace_protective_orders, replace_stop_loss, _cid)
 from risk_utils import DailyLossGuard, log_trade
 
 MAKER_FEE = float(os.environ.get('EST_MAKER_FEE', 0.0002))
@@ -258,6 +258,9 @@ class Trader:
 
         order_id, cid = None, None
         if not self.dry:
+            busy = self._exchange_busy(sym)
+            if busy:
+                return print(f"⏭️ {tag}: {busy} on KuCoin already -> not placing a second entry.")
             try:
                 self.ex.set_margin_mode(C.MARGIN_MODE, sym)
                 self.ex.set_leverage(lev, sym)
@@ -284,6 +287,20 @@ class Trader:
                        f"setups={'+'.join(plan['setups'])} market={px}")
         print(f"🎯 [{mode}] {sym} {side.upper()} limit {amount:g} @ {entry:.6g} (market {px:.6g}) "
               f"SL {sl:.6g} TP {tp:.6g} R:R {rr:.2f} lev {lev}x, valid {((plan['valid_until'] - now) / 3600):.1f}h")
+
+    def _exchange_busy(self, sym):
+        """Checks KuCoin itself, not just this process's records: during a Render redeploy the old and new
+        instance briefly run side by side, and each must not place the same entry."""
+        try:
+            for o in fetch_all_open_orders(self.ex, sym):
+                if _cid(o).startswith(C.PREFIX):
+                    return f"a bot order ({_cid(o)})"
+            for p in self.ex.fetch_positions([sym]):
+                if p.get('symbol') == sym and abs(float(p.get('contracts') or 0)) > 0:
+                    return f"an open {p.get('side')} position"
+        except Exception as e:
+            return f"unknown exchange state ({e})"     # fail safe: don't place when we can't check
+        return None
 
     def _activate(self, sym, p, entry, contracts):
         risk = abs(entry - p['sl'])

@@ -23,15 +23,20 @@ def _stamps(ts):
 
 
 def prepare_inputs(df):
+    """Returns (x, x_stamp, y_stamp, scale). Prices are divided by the last close (scale) so every coin is
+    around 1.0: Kronos normalises with (x - mean) / (std + 1e-5), and for coins priced like PEPE (~0.00001)
+    the 1e-5 swamps the real price spread, flattening the input and wrecking the forecast."""
     ctx = df.tail(C.KRONOS_LOOKBACK).reset_index(drop=True)
     ts = pd.to_datetime(ctx['timestamp'], unit='ms')
     step = pd.Timedelta(seconds=C.CANDLE_SECONDS)
     future = pd.Series([ts.iloc[-1] + step * (i + 1) for i in range(C.KRONOS_PRED_LEN)])
-    ohlc = ctx[PRICE_COLS].to_numpy(np.float32)
+    ohlc64 = ctx[PRICE_COLS].to_numpy(np.float64)
+    scale = float(ohlc64[-1, 3])
+    ohlc = (ohlc64 / scale).astype(np.float32)
     vol = ctx['volume'].to_numpy(np.float32)
     amount = vol * ohlc.mean(axis=1)                     # same as KronosPredictor when 'amount' is missing
     x = np.column_stack([ohlc, vol, amount]).astype(np.float32)
-    return x, _stamps(ts), _stamps(future)
+    return x, _stamps(ts), _stamps(future), scale
 
 
 def write_inputs(dfs, path):
@@ -39,18 +44,22 @@ def write_inputs(dfs, path):
     syms = [s for s, df in dfs.items() if df is not None and len(df) >= C.KRONOS_LOOKBACK]
     if not syms:
         return None
-    xs, xst, yst = zip(*(prepare_inputs(dfs[s]) for s in syms))
+    xs, xst, yst, scales = zip(*(prepare_inputs(dfs[s]) for s in syms))
     tmp = path + '.tmp.npz'
-    np.savez(tmp, x=np.stack(xs), x_stamp=np.stack(xst), y_stamp=np.stack(yst))
+    np.savez(tmp, x=np.stack(xs), x_stamp=np.stack(xst), y_stamp=np.stack(yst),
+             scale=np.asarray(scales, dtype=np.float64))
     os.replace(tmp, path)
     return syms
 
 
-def read_paths(path, syms):
-    """Reads kronos_infer.py output; {} when the file is missing (inference failed or was skipped)."""
-    if not syms or not os.path.exists(path):
+def read_paths(path, syms, inputs_path):
+    """Reads kronos_infer.py output and undoes the price scaling; {} when the output is missing
+    (inference failed or was skipped)."""
+    if not syms or not os.path.exists(path) or not os.path.exists(inputs_path):
         return {}
-    paths = np.load(path)['paths'].astype(float)
+    paths = np.load(path)['paths'].astype(np.float64)
+    scale = np.load(inputs_path)['scale']
+    paths = paths * scale[:, None, None, None]
     return dict(zip(syms, paths))
 
 

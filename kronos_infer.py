@@ -2,8 +2,9 @@
 
   python kronos_infer.py <input.npz> <output.npz>
 
-input.npz : x (n, T, 6) raw open/high/low/close/volume/amount, x_stamp (n, T, 5), y_stamp (n, H, 5)
-output.npz: paths (n, KRONOS_SAMPLES, H, 4) predicted open/high/low/close in price units
+input.npz : x (n, T, 6) open/high/low/close (divided by the last close)/volume/amount, x_stamp (n, T, 5),
+            y_stamp (n, H, 5), scale (n,) - scale is applied back by kronos_engine.read_paths
+output.npz: paths (n, KRONOS_SAMPLES, H, 4) predicted open/high/low/close in the same (scaled) units
 
 The worker starts this once per scan for all coins. When it exits, all torch memory is returned to the OS,
 so the 512 MB budget only has to hold torch during the few minutes of a scan.
