@@ -1,5 +1,5 @@
 {
-  "updated_at": 1792757106.1675518,
+  "updated_at": 1792757241.9408727,
   "dry_run": false,
   "pending": {
     "ETH/USDT:USDT": {
@@ -22,29 +22,25 @@
         "mean_reversion"
       ],
       "last_check_ms": 1792748863763
-    },
+    }
+  },
+  "active": {
     "IRYS/USDT:USDT": {
       "side": "short",
       "entry": 0.041287,
       "sl": 0.046298,
+      "initial_sl": 0.046298,
       "tp": 0.024243,
-      "atr": 0.005011357142857143,
-      "amount": 19.0,
-      "leverage": 4,
-      "order_id": "503081188479561728",
-      "cid": "krn_entry_1792757103977",
-      "valid_until": 1792785600,
-      "placed_at": 1792757102.3646202,
-      "candle_ts": 1792742400,
+      "risk": 0.0050110000000000016,
+      "contracts": 19.0,
+      "protected_contracts": 19.0,
+      "breakeven": false,
+      "opened_at": 1792757238.248107,
+      "max_hold_until": 1792843638.2481072,
       "score": 85.0,
-      "prob_up": 0.0,
-      "setups": [
-        "mean_reversion"
-      ],
-      "last_check_ms": 1792757102364
+      "last_check_ms": 1792757238248
     }
   },
-  "active": {},
   "cooldowns": {},
   "last_traded_candles": {
     "IRYS/USDT:USDT": 1792742400,
