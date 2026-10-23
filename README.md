@@ -43,32 +43,43 @@ Results go to `trade_journal_kronossniper.csv` and the running total to `trader_
 
 ## How it fits in 512 MB
 
-- **Kronos-mini** (4.1M parameters, ~16 MB of weights) with its Tokenizer-2k instead of Kronos-small.
-- **torch never loads in the always-on process.** Once per scan the worker writes the candles of all coins
-  to a temp file and starts `kronos_infer.py` as a child process. It loads torch and the model, computes
-  the paths 10 at a time (`KRONOS_BATCH`), writes them back and exits, which hands all of that memory back.
-  Between scans only the worker (ccxt + pandas) is resident.
-- **No second Python for the coin ranking**: `getcoins` runs inside the worker on the shared exchange.
-- **Small native footprints**: 1 torch thread, `OMP_NUM_THREADS=1`, `MALLOC_ARENA_MAX=2`.
-- **Memory is logged** after every scan: worker size, the Kronos process peak, and the container total and peak.
+`worker.py` is a small supervisor (standard library only, ~15 MB). It never loads ccxt, pandas or torch
+itself; every piece of work is a short-lived process, and only one runs at a time:
 
-If Render ever reports an out-of-memory restart, the log says so and names the knobs: lower `KRONOS_BATCH`
-(5), then `KRONOS_LOOKBACK` (300) or `KRONOS_SAMPLES` (20). Each scan takes a few minutes on the Starter's
-0.5 CPU; that is fine for a 4h strategy.
+| Step | Process | When |
+|---|---|---|
+| ranking, 4h data, setups | `scan_job.py prepare` | every 4h close + 60 s |
+| Kronos forecasts | `kronos_infer.py` (torch + Kronos-mini) | right after |
+| plans + forecast log | `scan_job.py decide` | right after |
+| place / manage entries and positions | `trade_job.py` | every 60 s |
+
+So peak memory is the largest single job (Kronos, roughly 300 MB) instead of everything at once. During
+the few minutes Kronos runs, the trader pauses: live positions keep their exchange stop-loss and
+take-profit, and paper mode replays the missed 1-minute candles on its next step.
+
+Also: Kronos-mini (4.1M parameters) with its Tokenizer-2k, paths computed 10 at a time (`KRONOS_BATCH`),
+1 torch thread, `MALLOC_ARENA_MAX=2`. Memory is logged after every scan and once an hour.
+
+If a job is killed for memory, the log says `💥 … out of memory` and names the knobs: lower `KRONOS_BATCH`
+(5), then `KRONOS_LOOKBACK` (300) or `KRONOS_SAMPLES` (20). That scan produces no plans; the next one
+tries again.
 
 ## Files
 
 | File | What it does |
 |---|---|
-| `worker.py` | Entry point: scanner thread + trader loop |
-| `scanner.py` | 4h scan: data, setups, forecast, plans, forecast log |
+| `worker.py` | Entry point: supervisor that runs the jobs below one at a time |
+| `scan_job.py` | Scan job: `prepare` (data, setups, Kronos input) and `decide` (plans, forecast log) |
+| `trade_job.py` | One trader step |
+| `joblock.py` | Makes sure only one job runs at a time (also for `selftest.py`) |
+| `scanner.py` | Scan logic: data, setups, decisions, forecast log |
 | `signals.py` | Indicators, setups, Kronos path summary, entry/stop/target/score |
-| `kronos_engine.py` | Runs Kronos in a child process and returns every sampled path; bootstrap baseline; weight download |
-| `kronos_infer.py` | The child process: loads torch + Kronos, forecasts all coins, exits |
+| `kronos_engine.py` | Kronos input/output files, bootstrap baseline, weight download (build step) |
+| `kronos_infer.py` | The Kronos process: loads torch + Kronos, forecasts all coins, keeps every sampled path, exits |
 | `mem.py` | Memory readings for the logs |
 | `trader.py` | Limit entries, fills, protection, breakeven, time stop, paper simulation |
 | `config.py` / `.env.example` | Every setting with its default |
-| `selftest.py` | One real Kronos forecast on live data, no orders |
+| `selftest.py` | Runs the real scan pipeline for a few coins, no orders; safe while the worker runs |
 | `evaluate_forecasts.py` | Scores logged forecasts against what actually happened |
 | `kronos_model/` | Vendored Kronos model code (MIT, see its LICENSE; two small changes listed in its `__init__.py`) |
 | `getcoins.py`, `asset_utils.py` | Coin ranking and trading universe |

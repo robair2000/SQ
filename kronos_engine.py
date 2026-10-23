@@ -1,23 +1,18 @@
-"""Forecasters. Each returns, per coin, every sampled path: array (KRONOS_SAMPLES, KRONOS_PRED_LEN, 4).
+"""Kronos input/output files and the baseline forecaster. Paths per coin: array (KRONOS_SAMPLES, KRONOS_PRED_LEN, 4).
 
-KronosForecaster never imports torch in this process. It writes the inputs for all coins to one .npz,
-runs kronos_infer.py as a child process and reads the paths back. The child exits after the scan, so
-torch and the model only use memory for a few minutes every 4 hours (fits a 512 MB Render instance).
+torch is never imported here. scan_job.py writes the inputs for all coins with write_inputs(), the
+supervisor (worker.py) runs kronos_infer.py as its own process, and scan_job.py reads the result with
+read_paths(). No other job is running while Kronos runs, which is what keeps the peak under 512 MB.
 
 BootstrapForecaster (USE_KRONOS=false) replays random blocks of the coin's own recent candles. It has no
 edge by construction: it is only for testing the pipeline and as a baseline in the forecast log.
 """
 import os
-import subprocess
-import sys
-import tempfile
-import time
 
 import numpy as np
 import pandas as pd
 
 import config as C
-import mem
 
 PRICE_COLS = ['open', 'high', 'low', 'close']
 
@@ -39,33 +34,24 @@ def prepare_inputs(df):
     return x, _stamps(ts), _stamps(future)
 
 
-class KronosForecaster:
-    name = 'kronos'
+def write_inputs(dfs, path):
+    """Writes the Kronos input file for all coins; returns the symbol order (None if nothing to do)."""
+    syms = [s for s, df in dfs.items() if df is not None and len(df) >= C.KRONOS_LOOKBACK]
+    if not syms:
+        return None
+    xs, xst, yst = zip(*(prepare_inputs(dfs[s]) for s in syms))
+    tmp = path + '.tmp.npz'
+    np.savez(tmp, x=np.stack(xs), x_stamp=np.stack(xst), y_stamp=np.stack(yst))
+    os.replace(tmp, path)
+    return syms
 
-    def paths_many(self, dfs):
-        """dfs: {symbol: DataFrame of closed 4h candles}. Returns {symbol: paths}."""
-        syms = [s for s, df in dfs.items() if df is not None and len(df) >= C.KRONOS_LOOKBACK]
-        if not syms:
-            return {}
-        xs, xst, yst = zip(*(prepare_inputs(dfs[s]) for s in syms))
-        with tempfile.TemporaryDirectory(prefix='kronos_') as tmp:
-            inp, out = os.path.join(tmp, 'in.npz'), os.path.join(tmp, 'out.npz')
-            np.savez(inp, x=np.stack(xs), x_stamp=np.stack(xst), y_stamp=np.stack(yst))
-            here = os.path.dirname(os.path.abspath(__file__))
-            t0 = time.time()
-            proc = subprocess.run([sys.executable, os.path.join(here, 'kronos_infer.py'), inp, out],
-                                  cwd=here, timeout=C.KRONOS_TIMEOUT)
-            if proc.returncode != 0:
-                if proc.returncode in (-9, 137):
-                    raise RuntimeError("Kronos process was killed (out of memory). Lower KRONOS_BATCH, "
-                                       "KRONOS_LOOKBACK or KRONOS_SAMPLES, or use a bigger instance.")
-                raise RuntimeError(f"Kronos process failed (exit code {proc.returncode})")
-            paths = np.load(out)['paths'].astype(float)
-        print(f"🧠 [SCAN] Kronos forecast {len(syms)} coins in {time.time() - t0:.0f}s | {mem.report()}")
-        return dict(zip(syms, paths))
 
-    def paths(self, df, symbol='X'):
-        return self.paths_many({symbol: df})[symbol]
+def read_paths(path, syms):
+    """Reads kronos_infer.py output; {} when the file is missing (inference failed or was skipped)."""
+    if not syms or not os.path.exists(path):
+        return {}
+    paths = np.load(path)['paths'].astype(float)
+    return dict(zip(syms, paths))
 
 
 class BootstrapForecaster:
@@ -92,13 +78,6 @@ class BootstrapForecaster:
 
     def paths_many(self, dfs):
         return {s: self.paths(df) for s, df in dfs.items() if df is not None}
-
-
-def load_forecaster():
-    if not C.USE_KRONOS:
-        print("ℹ️ USE_KRONOS=false -> bootstrap baseline forecaster (no edge, paper trading only).")
-        return BootstrapForecaster()
-    return KronosForecaster()
 
 
 def download_models():

@@ -1,6 +1,5 @@
 """4h scanner: setups + Kronos forecast -> trade plans. Runs in its own thread inside worker.py."""
 import csv
-import gc
 import json
 import os
 import time
@@ -140,23 +139,11 @@ def decide(ctx, paths, model_name, scan_iso):
     return plan, log
 
 
-def scan_symbol(exchange, forecaster, symbol, scan_iso):
-    """Single coin end to end (used by selftest.py)."""
-    ctx = prepare_symbol(exchange, symbol)
-    if ctx is None:
-        return None, None
-    paths = forecaster.paths_many({symbol: ctx['df']}).get(symbol)
-    return decide(ctx, paths, forecaster.name, scan_iso)
-
-
-def run_scan(exchange, forecaster, on_plan=None):
-    scan_iso = datetime.now(timezone.utc).isoformat(timespec='seconds')
+def prepare_all(exchange):
+    """Phase 1 for every coin: ranking, data, indicators, setups."""
     refresh_ranking(exchange)
-    symbols = get_combined_trading_assets()
-
-    # Phase 1: data for every coin
     contexts = []
-    for symbol in symbols:
+    for symbol in get_combined_trading_assets():
         try:
             ctx = prepare_symbol(exchange, symbol)
             if ctx:
@@ -164,37 +151,41 @@ def run_scan(exchange, forecaster, on_plan=None):
         except Exception as e:
             print(f"❌ [SCAN] {symbol}: {e}")
         time.sleep(3.0)                         # be gentle with KuCoin rate limits
+    return contexts
 
-    # Phase 2: one forecast run for all coins that need it (one Kronos process per scan)
-    want = {c['symbol']: c['df'] for c in contexts if c['has_setup'] or C.LOG_ALL_FORECASTS}
-    paths = {}
-    if want:
-        try:
-            paths = forecaster.paths_many(want)
-        except Exception as e:
-            print(f"❌ [SCAN] forecast failed: {e}")
 
-    # Phase 3: plans
+def wanted(contexts):
+    """Coins that get a forecast this scan."""
+    return {c['symbol']: c['df'] for c in contexts if c['has_setup'] or C.LOG_ALL_FORECASTS}
+
+
+def decide_all(contexts, paths, model_name, scan_iso, write=True):
+    """Phase 3: plans + forecast log. paths: {symbol: array}. write=False for the self-test."""
     plans, logs = [], []
     for ctx in contexts:
         try:
-            plan, log = decide(ctx, paths.get(ctx['symbol']), forecaster.name, scan_iso)
+            p = paths.get(ctx['symbol'])
+            if p is not None and not sane(p, float(ctx['row']['close'])):
+                print(f"⚠️ [SCAN] {ctx['symbol']}: forecast looks broken (non-finite or >80% away), ignored")
+                p = None
+            plan, log = decide(ctx, p, model_name, scan_iso)
             if log:
                 logs.append(log)
             if plan:
                 plans.append(plan)
-                if on_plan:
-                    on_plan(plan)              # hand to the trader immediately
         except Exception as e:
             print(f"❌ [SCAN] {ctx['symbol']}: {e}")
-
-    write_atomic(C.PLANS_FILE, json.dumps({'scan_iso': scan_iso, 'plans': plans}, indent=2).encode())
-    push(C.PLANS_FILE)
-    append_forecast_log(logs)
-    del contexts, want, paths
-    gc.collect()
+    if write:
+        write_atomic(C.PLANS_FILE, json.dumps({'scan_iso': scan_iso, 'plans': plans}, indent=2).encode())
+        push(C.PLANS_FILE)
+        append_forecast_log(logs)
     print(f"✅ [SCAN] done: {len(logs)} forecasts, {len(plans)} plans | {mem.report()}")
     return plans
+
+
+def sane(paths, last):
+    p = np.asarray(paths, dtype=float)
+    return bool(np.all(np.isfinite(p)) and np.all(p > 0) and np.all(np.abs(p / last - 1) < 0.8))
 
 
 def seconds_until_next_scan(now=None):

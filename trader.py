@@ -41,8 +41,10 @@ class Trader:
         self.cooldowns = {}
         self.last_traded_candles = {}
         self.paper = {'realized_usdt': 0.0, 'trades': 0, 'wins': 0}
+        self.consumed = {}              # "symbol|candle_ts" -> valid_until: plans already handled once
         self._queue = {}
         self._lock = threading.Lock()
+        self.local_always = False       # set by trade_job.py (one step per process)
         self._dirty = False
         self._logged = set()
 
@@ -66,8 +68,20 @@ class Trader:
             q, self._queue = self._queue, {}
         return q
 
-    def load_status(self):
-        if not github_pull(C.STATUS_FILE, timeout=10, agent='kronos-trader'):
+    def new_plans(self, plans):
+        """Plans from the scanner that this trader has not handled yet (each plan is tried once)."""
+        now = self.now()
+        self.consumed = {k: v for k, v in self.consumed.items() if v > now - 86400}
+        fresh = [p for p in plans if f"{p['symbol']}|{p['candle_ts']}" not in self.consumed]
+        for p in fresh:
+            self.consumed[f"{p['symbol']}|{p['candle_ts']}"] = p['valid_until']
+            self.submit_plan(p)
+        return fresh
+
+    def load_status(self, prefer_local=False, quiet=False):
+        """prefer_local: use the local file when present (one-step trader runs); GitHub only after a fresh deploy."""
+        have = prefer_local and os.path.exists(C.STATUS_FILE)
+        if not have and not github_pull(C.STATUS_FILE, timeout=10, agent='kronos-trader'):
             print("ℹ️ [TRADER] no previous status, starting clean.")
             return
         try:
@@ -83,12 +97,17 @@ class Trader:
             self.cooldowns = d.get('cooldowns', {})
             self.last_traded_candles = {k: int(v) for k, v in d.get('last_traded_candles', {}).items()}
             self.guard.state = d.get('daily_guard', {}) or {}
-            print(f"📥 [TRADER] status restored: {len(self.pending)} pending, {len(self.active)} active.")
+            self.consumed = d.get('consumed_plans', {}) or {}
+            if not quiet:
+                print(f"📥 [TRADER] status restored: {len(self.pending)} pending, {len(self.active)} active.")
         except Exception as e:
             print(f"⚠️ [TRADER] status unreadable ({e}), starting clean.")
 
-    def save_status(self, force=False):
-        if not (self._dirty or self.guard.dirty or force):
+    def save_status(self, force=False, local_always=False):
+        """Local file: on every change, or every step with local_always (keeps the paper candle cursor).
+        GitHub: only when something meaningful changed, so it doesn't get a commit every minute."""
+        meaningful = self._dirty or self.guard.dirty or force
+        if not (meaningful or local_always):
             return
         self._dirty = False
         self.guard.dirty = False
@@ -96,14 +115,15 @@ class Trader:
             'updated_at': self.now(), 'dry_run': self.dry,
             'pending': self.pending, 'active': self.active,
             'cooldowns': self.cooldowns, 'last_traded_candles': self.last_traded_candles,
-            'daily_guard': self.guard.state, 'paper': self.paper,
+            'daily_guard': self.guard.state, 'paper': self.paper, 'consumed_plans': self.consumed,
         }
         b = json.dumps(data, indent=2).encode()
         tmp = C.STATUS_FILE + '.tmp'
         with open(tmp, 'wb') as f:
             f.write(b)
         os.replace(tmp, C.STATUS_FILE)
-        github_put(C.STATUS_FILE, b, message=f"Auto-update {C.STATUS_FILE} [skip ci]", agent='kronos-trader')
+        if meaningful:
+            github_put(C.STATUS_FILE, b, message=f"Auto-update {C.STATUS_FILE} [skip ci]", agent='kronos-trader')
 
     # ------------------------------------------------------------ market helpers
     def price(self, symbol):
@@ -188,7 +208,7 @@ class Trader:
                     self._place(plan)
                 except Exception as e:
                     print(f"⚠️ [TRADER] placing {plan['symbol']} failed: {e}")
-        self.save_status()
+        self.save_status(local_always=self.local_always)
 
     # ------------------------------------------------------------ placing
     def _place(self, plan):
