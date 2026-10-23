@@ -1,0 +1,27 @@
+{
+  "scan_iso": "2026-10-23T08:49:21+00:00",
+  "plans": [
+    {
+      "side": "short",
+      "setups": [
+        "mean_reversion"
+      ],
+      "entry": 0.03252203571428571,
+      "sl": 0.03671560714285714,
+      "tp": 0.023443153128027916,
+      "rr": 2.16,
+      "risk_atr": 1.0,
+      "atr": 0.0041935714285714284,
+      "prob_up": 0.0,
+      "fill_prob": 0.0,
+      "score": 74.6,
+      "leverage": 4,
+      "ref_close": 0.031893,
+      "symbol": "IRYS/USDT:USDT",
+      "candle_ts": 1792728000,
+      "created_at": 1792745559.8928416,
+      "valid_until": 1792771200,
+      "model": "kronos"
+    }
+  ]
+}
