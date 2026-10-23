@@ -1,6 +1,29 @@
 {
-  "scan_iso": "2026-10-23T09:42:06+00:00",
+  "scan_iso": "2026-10-23T09:44:57+00:00",
   "plans": [
+    {
+      "side": "short",
+      "setups": [
+        "squeeze",
+        "mean_reversion"
+      ],
+      "entry": 2419.320039727688,
+      "sl": 2459.3350081303456,
+      "tp": 2358.7217054009434,
+      "rr": 1.51,
+      "risk_atr": 1.2,
+      "atr": 33.469285714285725,
+      "prob_up": 0.1,
+      "fill_prob": 0.5,
+      "score": 73.2,
+      "leverage": 4,
+      "ref_close": 2400.04,
+      "symbol": "ETH/USDT:USDT",
+      "candle_ts": 1792728000,
+      "created_at": 1792748856.3400064,
+      "valid_until": 1792771200,
+      "model": "kronos"
+    },
     {
       "side": "short",
       "setups": [
@@ -8,18 +31,18 @@
       ],
       "entry": 0.03252203571428571,
       "sl": 0.03671560714285714,
-      "tp": 0.02250623648688197,
-      "rr": 2.39,
+      "tp": 0.024113208010196684,
+      "rr": 2.01,
       "risk_atr": 1.0,
       "atr": 0.0041935714285714284,
       "prob_up": 0.0,
       "fill_prob": 0.0,
-      "score": 77.4,
+      "score": 72.6,
       "leverage": 4,
       "ref_close": 0.031893,
       "symbol": "IRYS/USDT:USDT",
       "candle_ts": 1792728000,
-      "created_at": 1792748703.0222454,
+      "created_at": 1792748856.342081,
       "valid_until": 1792771200,
       "model": "kronos"
     }
