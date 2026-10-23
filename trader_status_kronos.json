@@ -1,29 +1,25 @@
 {
-  "updated_at": 1792745566.918977,
+  "updated_at": 1792746112.5699499,
   "dry_run": true,
-  "pending": {
+  "pending": {},
+  "active": {
     "IRYS/USDT:USDT": {
       "side": "short",
       "entry": 0.034177,
       "sl": 0.036716,
+      "initial_sl": 0.036716,
       "tp": 0.023443,
-      "atr": 0.0041935714285714284,
-      "amount": 23.0,
-      "leverage": 4,
-      "order_id": null,
-      "cid": null,
-      "valid_until": 1792771200,
-      "placed_at": 1792745559.8930643,
-      "candle_ts": 1792728000,
+      "risk": 0.0025389999999999996,
+      "contracts": 23.0,
+      "protected_contracts": 0.0,
+      "breakeven": false,
+      "opened_at": 1792746110.7739453,
+      "max_hold_until": 1792832510.7739453,
       "score": 74.6,
-      "prob_up": 0.0,
-      "setups": [
-        "mean_reversion"
-      ],
-      "last_check_ms": 1792745559893
+      "last_check_ms": 1792746060000,
+      "fill_candle_ms": 1792746000000
     }
   },
-  "active": {},
   "cooldowns": {},
   "last_traded_candles": {
     "IRYS/USDT:USDT": 1792728000
